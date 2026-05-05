@@ -5,18 +5,28 @@ import { createContext } from "./context.js";
 
 const app = new Hono();
 
-// Changed from app.use to app.all for proper endpoint termination
 app.all("/api/trpc/*", async (c) => {
   try {
+    // 🔥 THE SILVER BULLET: Forcefully read the data into memory 
+    // so Vercel's weird stream handling doesn't choke tRPC!
+    const bodyText = c.req.method === "POST" ? await c.req.text() : undefined;
+    
+    // Rebuild a completely clean Request object for tRPC
+    const cleanReq = new Request(c.req.url, {
+      method: c.req.method,
+      headers: c.req.raw.headers,
+      body: bodyText,
+    });
+
     return await fetchRequestHandler({
       endpoint: "/api/trpc",
-      req: c.req.raw,
+      req: cleanReq,
       router: appRouter,
       createContext,
     });
   } catch (e: any) {
     console.error("tRPC Error:", e);
-    return c.json({ success: false, error: e.message }, 500);
+    return c.json({ success: false, error: e.message || "Internal Server Error" }, 500);
   }
 });
 
