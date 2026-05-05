@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { createRouter, publicQuery, authedQuery } from "../middleware";
+import { createRouter, publicQuery, authedQuery } from "../middleware.js";
 import {
   findUserByEmail,
   createUser,
-} from "../lib/sheets-queries";
+} from "../lib/sheets-queries.js";
 import { SignJWT } from "jose";
-import { env } from "../lib/env";
+import { env } from "../lib/env.js";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 

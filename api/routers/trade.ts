@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createRouter, authedQuery } from "../middleware";
+import { createRouter, authedQuery } from "../middleware.js";
 import {
   findTradesByUserId,
   createTrade,
@@ -8,7 +8,7 @@ import {
   findTradeById,
   findJournalByUserId,
   upsertJournalEntry,
-} from "../lib/sheets-queries";
+} from "../lib/sheets-queries.js";
 import crypto from "crypto";
 
 // ─── Shared Zod schemas ───────────────────────────────────────────────────────

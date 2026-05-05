@@ -42,9 +42,7 @@ The content is organized as follows:
 <directory_structure>
 .backend-features.json
 .dockerignore
-.env.example
 .gitignore
-.prettierignore
 .prettierrc
 api/app.ts
 api/boot.ts
@@ -174,15 +172,6 @@ dist
 *.log
 </file>
 
-<file path=".env.example">
-# ── Backend ─────────────────────────────────────────────────────
-APP_ID=                   # Application ID
-APP_SECRET=               # Application secret (used for JWT signing)
-
-# ── Database ───────────────────────────────────────────────────
-DATABASE_URL=             # MySQL connection string (mysql://user:pass@host:port/db)
-</file>
-
 <file path=".gitignore">
 # Dependencies
 node_modules
@@ -192,7 +181,11 @@ dist
 dist-ssr
 
 # Environment variables
-.env*.local
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # Logs
 npm-debug.log*
@@ -208,9 +201,7 @@ yarn-error.log*
 # OS
 .DS_Store
 Thumbs.db
-</file>
 
-<file path=".prettierignore">
 # Dependencies
 node_modules/
 .pnpm-store/
@@ -264,30 +255,6 @@ Thumbs.db
   "jsxSingleQuote": false,
   "proseWrap": "preserve"
 }
-</file>
-
-<file path="api/app.ts">
-import { Hono } from "hono";
-import { bodyLimit } from "hono/body-limit";
-import type { HttpBindings } from "@hono/node-server";
-import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
-import { appRouter } from "./router";
-import { createContext } from "./context";
-
-const app = new Hono<{ Bindings: HttpBindings }>();
-
-app.use(bodyLimit({ maxSize: 50 * 1024 * 1024 }));
-app.use("/api/trpc/*", async (c) => {
-  return fetchRequestHandler({
-    endpoint: "/api/trpc",
-    req: c.req.raw,
-    router: appRouter,
-    createContext,
-  });
-});
-app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
-
-export default app;
 </file>
 
 <file path="api/boot.ts">
@@ -347,32 +314,6 @@ export async function createContext(
   }
   return { req: opts.req, resHeaders: opts.resHeaders, user };
 }
-</file>
-
-<file path="api/index.ts">
-import app from "./app";
-export default app.fetch.bind(app);
-</file>
-
-<file path="api/lib/env.ts">
-import "dotenv/config";
-
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value && process.env.NODE_ENV === "production") {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value ?? "";
-}
-
-export const env = {
-  appId: required("APP_ID"),
-  appSecret: required("APP_SECRET"),
-  isProduction: process.env.NODE_ENV === "production",
-  jwtSecret: required("JWT_SECRET"),
-  googleSheetId: required("GOOGLE_SHEET_ID"),
-  googleServiceAccountJson: required("GOOGLE_SERVICE_ACCOUNT_JSON"),
-};
 </file>
 
 <file path="api/lib/http.ts">
@@ -451,369 +392,6 @@ export class HttpClient {
 
   post<T>(url: string, body?: any, config?: RequestConfig) {
     return this.request<T>(url, { ...config, method: "POST", body });
-  }
-}
-</file>
-
-<file path="api/lib/sheets-db.ts">
-import { GoogleSpreadsheet } from "google-spreadsheet";
-import { JWT } from "google-auth-library";
-import { env } from "./env";
-
-// Decode service account JSON from base64
-let serviceAccount: any;
-try {
-  const json = Buffer.from(env.googleServiceAccountJson, "base64").toString("utf-8");
-  serviceAccount = JSON.parse(json);
-} catch {
-  // Try plain JSON if not base64
-  serviceAccount = JSON.parse(env.googleServiceAccountJson);
-}
-
-const SCOPES = [
-  "https://www.googleapis.com/auth/spreadsheets",
-  "https://www.googleapis.com/auth/drive.file",
-];
-
-let docPromise: Promise<GoogleSpreadsheet> | null = null;
-
-async function getDoc(): Promise<GoogleSpreadsheet> {
-  const jwt = new JWT({
-    email: serviceAccount.client_email,
-    key: serviceAccount.private_key,
-    scopes: SCOPES,
-  });
-  const doc = new GoogleSpreadsheet(env.googleSheetId, jwt);
-  await doc.loadInfo();
-  return doc;
-}
-
-export async function getSpreadsheet() {
-  if (!docPromise) {
-    docPromise = getDoc();
-  }
-  return docPromise;
-}
-
-export async function resetSpreadsheetCache() {
-  docPromise = null;
-}
-
-// Sheet names
-export const SHEET_USERS   = "Users";
-export const SHEET_TRADES  = "Trades";
-export const SHEET_FRIENDS = "Friends";
-export const SHEET_JOURNAL = "Journal";
-
-// Ensure headers exist on a sheet
-export async function ensureHeaders(
-  doc: GoogleSpreadsheet,
-  sheetTitle: string,
-  headers: string[]
-) {
-  let sheet = doc.sheetsByTitle[sheetTitle];
-  if (!sheet) {
-    sheet = await doc.addSheet({ title: sheetTitle, headerValues: headers });
-  } else {
-    await sheet.loadHeaderRow();
-    const existing = sheet.headerValues || [];
-    const missing = headers.filter((h) => !existing.includes(h));
-    if (missing.length > 0) {
-      await sheet.setHeaderRow([...existing, ...missing]);
-    }
-  }
-  return sheet;
-}
-</file>
-
-<file path="api/lib/sheets-queries.ts">
-import {
-  getSpreadsheet,
-  ensureHeaders,
-  SHEET_USERS,
-  SHEET_TRADES,
-  SHEET_FRIENDS,
-  SHEET_JOURNAL,
-} from "./sheets-db";
-import type { GoogleSpreadsheetRow } from "google-spreadsheet";
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-export type UserRow = {
-  id: string;
-  email: string;
-  passwordHash: string;
-  name: string;
-  shareToken: string;
-  createdAt: string;
-};
-
-export type TradeRow = {
-  id: string;
-  userId: string;
-  type: "Buy" | "Sell" | "Short" | "Cover";
-  ticker: string;
-  quantity: string;
-  price: string;
-  date: string;
-  notes: string;
-  createdAt: string;
-};
-
-export type FriendRow = {
-  id: string;
-  ownerUserId: string;
-  viewerUserId: string;
-  shareToken: string;
-  createdAt: string;
-};
-
-/**
- * JournalRow — one row per trading day.
- * Arrays (mistakes) are stored as comma-separated strings in a single cell.
- */
-export type JournalRow = {
-  id: string;
-  userId: string;
-  /** ISO date string – date portion only used as key (YYYY-MM-DD) */
-  date: string;
-  marketSentiment: "Bullish" | "Bearish" | "Volatile" | "Sideways" | "";
-  /** 1-10 */
-  mentalState: string;
-  /** 1-10 */
-  energyLevel: string;
-  /** Comma-separated list of mistake keys */
-  mistakes: string;
-  /** Free-form observation text */
-  observations: string;
-  /** Starting balance for the day */
-  startingBalance: string;
-  /** Closing balance for the day */
-  closingBalance: string;
-  /** Total brokerage paid for the day */
-  totalBrokerage: string;
-  createdAt: string;
-};
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function rowToObject<T extends Record<string, string>>(row: GoogleSpreadsheetRow<T>): T {
-  const obj: any = {};
-  for (const key of Object.keys(row.toObject())) {
-    obj[key] = row.get(key) ?? "";
-  }
-  return obj as T;
-}
-
-// ─── Users ───────────────────────────────────────────────────────────────────
-
-export async function getUsersSheet() {
-  const doc = await getSpreadsheet();
-  return ensureHeaders(doc, SHEET_USERS, [
-    "id",
-    "email",
-    "passwordHash",
-    "name",
-    "shareToken",
-    "createdAt",
-  ]);
-}
-
-export async function findUserByEmail(email: string): Promise<UserRow | null> {
-  const sheet = await getUsersSheet();
-  const rows = await sheet.getRows<UserRow>();
-  const row = rows.find((r) => r.get("email")?.toLowerCase() === email.toLowerCase());
-  return row ? rowToObject(row) : null;
-}
-
-export async function findUserById(id: string): Promise<UserRow | null> {
-  const sheet = await getUsersSheet();
-  const rows = await sheet.getRows<UserRow>();
-  const row = rows.find((r) => r.get("id") === id);
-  return row ? rowToObject(row) : null;
-}
-
-export async function findUserByShareToken(token: string): Promise<UserRow | null> {
-  const sheet = await getUsersSheet();
-  const rows = await sheet.getRows<UserRow>();
-  const row = rows.find((r) => r.get("shareToken") === token);
-  return row ? rowToObject(row) : null;
-}
-
-export async function createUser(
-  data: Omit<UserRow, "id" | "createdAt"> & { id: string; createdAt: string }
-) {
-  const sheet = await getUsersSheet();
-  await sheet.addRow(data as any);
-  return data;
-}
-
-// ─── Trades ──────────────────────────────────────────────────────────────────
-
-export async function getTradesSheet() {
-  const doc = await getSpreadsheet();
-  return ensureHeaders(doc, SHEET_TRADES, [
-    "id",
-    "userId",
-    "type",
-    "ticker",
-    "quantity",
-    "price",
-    "date",
-    "notes",
-    "createdAt",
-  ]);
-}
-
-export async function findTradesByUserId(userId: string): Promise<TradeRow[]> {
-  const sheet = await getTradesSheet();
-  const rows = await sheet.getRows<TradeRow>();
-  return rows
-    .filter((r) => r.get("userId") === userId)
-    .map((r) => rowToObject(r))
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-}
-
-export async function findTradeById(id: string): Promise<TradeRow | null> {
-  const sheet = await getTradesSheet();
-  const rows = await sheet.getRows<TradeRow>();
-  const row = rows.find((r) => r.get("id") === id);
-  return row ? rowToObject(row) : null;
-}
-
-export async function createTrade(data: TradeRow) {
-  const sheet = await getTradesSheet();
-  await sheet.addRow(data as any);
-  return data;
-}
-
-export async function updateTrade(
-  id: string,
-  data: Partial<Omit<TradeRow, "id" | "userId" | "createdAt">>
-) {
-  const sheet = await getTradesSheet();
-  const rows = await sheet.getRows<TradeRow>();
-  const row = rows.find((r) => r.get("id") === id);
-  if (!row) return null;
-  for (const [key, value] of Object.entries(data)) {
-    if (value !== undefined) row.set(key as keyof TradeRow, String(value));
-  }
-  await row.save();
-  return rowToObject(row);
-}
-
-export async function deleteTrade(id: string) {
-  const sheet = await getTradesSheet();
-  const rows = await sheet.getRows<TradeRow>();
-  const row = rows.find((r) => r.get("id") === id);
-  if (!row) return false;
-  await row.delete();
-  return true;
-}
-
-// ─── Friends ─────────────────────────────────────────────────────────────────
-
-export async function getFriendsSheet() {
-  const doc = await getSpreadsheet();
-  return ensureHeaders(doc, SHEET_FRIENDS, [
-    "id",
-    "ownerUserId",
-    "viewerUserId",
-    "shareToken",
-    "createdAt",
-  ]);
-}
-
-export async function findFriendLinksByViewer(viewerUserId: string): Promise<FriendRow[]> {
-  const sheet = await getFriendsSheet();
-  const rows = await sheet.getRows<FriendRow>();
-  return rows
-    .filter((r) => r.get("viewerUserId") === viewerUserId)
-    .map((r) => rowToObject(r));
-}
-
-export async function createFriendLink(data: FriendRow) {
-  const sheet = await getFriendsSheet();
-  await sheet.addRow(data as any);
-  return data;
-}
-
-export async function deleteFriendLink(id: string) {
-  const sheet = await getFriendsSheet();
-  const rows = await sheet.getRows<FriendRow>();
-  const row = rows.find((r) => r.get("id") === id);
-  if (!row) return false;
-  await row.delete();
-  return true;
-}
-
-// ─── Journal ─────────────────────────────────────────────────────────────────
-
-export async function getJournalSheet() {
-  const doc = await getSpreadsheet();
-  return ensureHeaders(doc, SHEET_JOURNAL, [
-    "id",
-    "userId",
-    "date",
-    "marketSentiment",
-    "mentalState",
-    "energyLevel",
-    "mistakes",
-    "observations",
-    "startingBalance",
-    "closingBalance",
-    "totalBrokerage",
-    "createdAt",
-  ]);
-}
-
-export async function findJournalByUserId(userId: string): Promise<JournalRow[]> {
-  const sheet = await getJournalSheet();
-  const rows = await sheet.getRows<JournalRow>();
-  return rows
-    .filter((r) => r.get("userId") === userId)
-    .map((r) => rowToObject(r));
-}
-
-export async function findJournalEntryByDate(
-  userId: string,
-  dateKey: string // YYYY-MM-DD
-): Promise<JournalRow | null> {
-  const sheet = await getJournalSheet();
-  const rows = await sheet.getRows<JournalRow>();
-  const row = rows.find(
-    (r) => r.get("userId") === userId && r.get("date").slice(0, 10) === dateKey
-  );
-  return row ? rowToObject(row) : null;
-}
-
-export async function upsertJournalEntry(data: JournalRow): Promise<JournalRow> {
-  const sheet = await getJournalSheet();
-  const rows = await sheet.getRows<JournalRow>();
-  const existing = rows.find(
-    (r) =>
-      r.get("userId") === data.userId && r.get("date").slice(0, 10) === data.date.slice(0, 10)
-  );
-  if (existing) {
-    // Update in place
-    const updatableKeys: (keyof JournalRow)[] = [
-      "marketSentiment",
-      "mentalState",
-      "energyLevel",
-      "mistakes",
-      "observations",
-      "startingBalance",
-      "closingBalance",
-      "totalBrokerage",
-    ];
-    for (const key of updatableKeys) {
-      existing.set(key, String(data[key] ?? ""));
-    }
-    await existing.save();
-    return rowToObject(existing);
-  } else {
-    await sheet.addRow(data as any);
-    return data;
   }
 }
 </file>
@@ -8405,11 +7983,11 @@ import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { formatINR } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Plus, LogOut, Share2, Users, AlertTriangle, BookOpen, Brain, Zap,
-  TrendingUp, TrendingDown, Clock, Wallet, CheckCircle2, ChevronRight, Check
+  TrendingUp, Clock, Copy, Check
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -8435,10 +8013,6 @@ export default function Dashboard() {
     enabled: !!user,
   });
 
-  const { data: friendsData } = trpc.friend.myFriends.useQuery(undefined, {
-    enabled: !!user,
-  });
-
   const [shareUrlCopied, setShareUrlCopied] = useState(false);
   const [friendToken, setFriendToken] = useState("");
 
@@ -8456,7 +8030,7 @@ export default function Dashboard() {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-[hsl(0,0%,6%)]">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500" />
       </div>
     );
@@ -8542,7 +8116,7 @@ export default function Dashboard() {
                 <span className="text-xs text-neutral-400 uppercase tracking-wider font-semibold">Net Realized P&L</span>
               </div>
               <p className={`text-3xl font-bold tracking-tight ${totalRealizedPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                {formatINR(totalRealizedPnL)}
+                {totalRealizedPnL > 0 ? "+" : ""}{formatINR(totalRealizedPnL)}
               </p>
             </CardContent>
           </Card>
@@ -8700,7 +8274,7 @@ export default function Dashboard() {
                         </thead>
                         <tbody className="divide-y divide-[hsl(0,0%,14%)]">
                           {dayTrades.map((m) => {
-                            const isOpen = m.sellPrice === null;
+                            // const isOpen = m.sellPrice === null;
                             const isLong = m.side === "Long";
                             const pnlColor = m.pnl === null ? "text-neutral-500" : m.pnl >= 0 ? "text-emerald-400 font-medium" : "text-red-400 font-medium";
                             
@@ -10029,37 +9603,6 @@ module.exports = {
 }
 </file>
 
-<file path="tsconfig.json">
-{
-  "files": [],
-  "references": [
-    {
-      "path": "./tsconfig.app.json"
-    },
-    {
-      "path": "./tsconfig.node.json"
-    },
-    {
-      "path": "./tsconfig.server.json"
-    }
-  ],
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@contracts/*": [
-        "./contracts/*"
-      ],
-      "@db/*": [
-        "./db/*"
-      ]
-    }
-  }
-}
-</file>
-
 <file path="tsconfig.node.json">
 {
   "compilerOptions": {
@@ -10598,6 +10141,487 @@ export default function Dashboard() {
 
 fs.writeFileSync(path.join(__dirname, 'src/pages/Dashboard.tsx'), content);
 console.log('Dashboard rewritten successfully.');
+</file>
+
+<file path="api/app.ts">
+import { Hono } from "hono";
+import type { HttpBindings } from "@hono/node-server";
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+import { appRouter } from "./router";
+import { createContext } from "./context";
+
+const app = new Hono<{ Bindings: HttpBindings }>();
+
+// Removed bodyLimit because it consumes the request stream, 
+// causing tRPC to crash with "stream already read" on Vercel.
+
+app.use("/api/trpc/*", async (c) => {
+  try {
+    return await fetchRequestHandler({
+      endpoint: "/api/trpc",
+      req: c.req.raw,
+      router: appRouter,
+      createContext,
+    });
+  } catch (e: any) {
+    console.error("tRPC Error:", e);
+    return c.json({ success: false, error: e.message || "Internal Server Error" }, 500);
+  }
+});
+
+app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
+
+// Global safety net
+app.onError((err, c) => {
+  console.error("Hono Global Error:", err);
+  return c.json({ success: false, error: err.message }, 500);
+});
+
+export default app;
+</file>
+
+<file path="api/lib/sheets-queries.ts">
+import {
+  getSpreadsheet,
+  ensureHeaders,
+  SHEET_USERS,
+  SHEET_TRADES,
+  SHEET_FRIENDS,
+  SHEET_JOURNAL,
+} from "./sheets-db";
+import type { GoogleSpreadsheetRow } from "google-spreadsheet";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+export type UserRow = {
+  id: string;
+  email: string;
+  passwordHash: string;
+  name: string;
+  shareToken: string;
+  createdAt: string;
+};
+
+export type TradeRow = {
+  id: string;
+  userId: string;
+  type: "Buy" | "Sell" | "Short" | "Cover";
+  ticker: string;
+  quantity: string;
+  price: string;
+  date: string;
+  notes: string;
+  createdAt: string;
+};
+
+export type FriendRow = {
+  id: string;
+  ownerUserId: string;
+  viewerUserId: string;
+  shareToken: string;
+  createdAt: string;
+};
+
+/**
+ * JournalRow — one row per trading day.
+ * Arrays (mistakes) are stored as comma-separated strings in a single cell.
+ */
+export type JournalRow = {
+  id: string;
+  userId: string;
+  /** ISO date string – date portion only used as key (YYYY-MM-DD) */
+  date: string;
+  marketSentiment: "Bullish" | "Bearish" | "Volatile" | "Sideways" | "";
+  /** 1-10 */
+  mentalState: string;
+  /** 1-10 */
+  energyLevel: string;
+  /** Comma-separated list of mistake keys */
+  mistakes: string;
+  /** Free-form observation text */
+  observations: string;
+  /** Starting balance for the day */
+  startingBalance: string;
+  /** Closing balance for the day */
+  closingBalance: string;
+  /** Total brokerage paid for the day */
+  totalBrokerage: string;
+  createdAt: string;
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function rowToObject<T>(row: any): T {
+  const obj: any = {};
+  for (const key of Object.keys(row.toObject())) {
+    obj[key] = row.get(key) ?? "";
+  }
+  return obj as T;
+}
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+
+export async function getUsersSheet() {
+  const doc = await getSpreadsheet();
+  return ensureHeaders(doc, SHEET_USERS, [
+    "id",
+    "email",
+    "passwordHash",
+    "name",
+    "shareToken",
+    "createdAt",
+  ]);
+}
+
+export async function findUserByEmail(email: string): Promise<UserRow | null> {
+  const sheet = await getUsersSheet();
+  const rows = await sheet.getRows<UserRow>();
+  const row = rows.find((r) => r.get("email")?.toLowerCase() === email.toLowerCase());
+  return row ? rowToObject(row) : null;
+}
+
+export async function findUserById(id: string): Promise<UserRow | null> {
+  const sheet = await getUsersSheet();
+  const rows = await sheet.getRows<UserRow>();
+  const row = rows.find((r) => r.get("id") === id);
+  return row ? rowToObject(row) : null;
+}
+
+export async function findUserByShareToken(token: string): Promise<UserRow | null> {
+  const sheet = await getUsersSheet();
+  const rows = await sheet.getRows<UserRow>();
+  const row = rows.find((r) => r.get("shareToken") === token);
+  return row ? rowToObject(row) : null;
+}
+
+export async function createUser(
+  data: Omit<UserRow, "id" | "createdAt"> & { id: string; createdAt: string }
+) {
+  const sheet = await getUsersSheet();
+  await sheet.addRow(data as any);
+  return data;
+}
+
+// ─── Trades ──────────────────────────────────────────────────────────────────
+
+export async function getTradesSheet() {
+  const doc = await getSpreadsheet();
+  return ensureHeaders(doc, SHEET_TRADES, [
+    "id",
+    "userId",
+    "type",
+    "ticker",
+    "quantity",
+    "price",
+    "date",
+    "notes",
+    "createdAt",
+  ]);
+}
+
+export async function findTradesByUserId(userId: string): Promise<TradeRow[]> {
+  const sheet = await getTradesSheet();
+  const rows = await sheet.getRows<TradeRow>();
+  return rows
+    .filter((r) => r.get("userId") === userId)
+    .map((r) => rowToObject<TradeRow>(r))
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+export async function findTradeById(id: string): Promise<TradeRow | null> {
+  const sheet = await getTradesSheet();
+  const rows = await sheet.getRows<TradeRow>();
+  const row = rows.find((r) => r.get("id") === id);
+  return row ? rowToObject(row) : null;
+}
+
+export async function createTrade(data: TradeRow) {
+  const sheet = await getTradesSheet();
+  await sheet.addRow(data as any);
+  return data;
+}
+
+export async function updateTrade(
+  id: string,
+  data: Partial<Omit<TradeRow, "id" | "userId" | "createdAt">>
+) {
+  const sheet = await getTradesSheet();
+  const rows = await sheet.getRows<TradeRow>();
+  const row = rows.find((r) => r.get("id") === id);
+  if (!row) return null;
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined) row.set(key as keyof TradeRow, String(value));
+  }
+  await row.save();
+  return rowToObject(row);
+}
+
+export async function deleteTrade(id: string) {
+  const sheet = await getTradesSheet();
+  const rows = await sheet.getRows<TradeRow>();
+  const row = rows.find((r) => r.get("id") === id);
+  if (!row) return false;
+  await row.delete();
+  return true;
+}
+
+// ─── Friends ─────────────────────────────────────────────────────────────────
+
+export async function getFriendsSheet() {
+  const doc = await getSpreadsheet();
+  return ensureHeaders(doc, SHEET_FRIENDS, [
+    "id",
+    "ownerUserId",
+    "viewerUserId",
+    "shareToken",
+    "createdAt",
+  ]);
+}
+
+export async function findFriendLinksByViewer(viewerUserId: string): Promise<FriendRow[]> {
+  const sheet = await getFriendsSheet();
+  const rows = await sheet.getRows<FriendRow>();
+  return rows
+    .filter((r) => r.get("viewerUserId") === viewerUserId)
+    .map((r) => rowToObject(r));
+}
+
+export async function createFriendLink(data: FriendRow) {
+  const sheet = await getFriendsSheet();
+  await sheet.addRow(data as any);
+  return data;
+}
+
+export async function deleteFriendLink(id: string) {
+  const sheet = await getFriendsSheet();
+  const rows = await sheet.getRows<FriendRow>();
+  const row = rows.find((r) => r.get("id") === id);
+  if (!row) return false;
+  await row.delete();
+  return true;
+}
+
+// ─── Journal ─────────────────────────────────────────────────────────────────
+
+export async function getJournalSheet() {
+  const doc = await getSpreadsheet();
+  return ensureHeaders(doc, SHEET_JOURNAL, [
+    "id",
+    "userId",
+    "date",
+    "marketSentiment",
+    "mentalState",
+    "energyLevel",
+    "mistakes",
+    "observations",
+    "startingBalance",
+    "closingBalance",
+    "totalBrokerage",
+    "createdAt",
+  ]);
+}
+
+export async function findJournalByUserId(userId: string): Promise<JournalRow[]> {
+  const sheet = await getJournalSheet();
+  const rows = await sheet.getRows<JournalRow>();
+  return rows
+    .filter((r) => r.get("userId") === userId)
+    .map((r) => rowToObject(r));
+}
+
+export async function findJournalEntryByDate(
+  userId: string,
+  dateKey: string // YYYY-MM-DD
+): Promise<JournalRow | null> {
+  const sheet = await getJournalSheet();
+  const rows = await sheet.getRows<JournalRow>();
+  const row = rows.find(
+    (r) => r.get("userId") === userId && r.get("date").slice(0, 10) === dateKey
+  );
+  return row ? rowToObject(row) : null;
+}
+
+export async function upsertJournalEntry(data: JournalRow): Promise<JournalRow> {
+  const sheet = await getJournalSheet();
+  const rows = await sheet.getRows<JournalRow>();
+  const existing = rows.find(
+    (r) =>
+      r.get("userId") === data.userId && r.get("date").slice(0, 10) === data.date.slice(0, 10)
+  );
+  if (existing) {
+    // Update in place
+    const updatableKeys: (keyof JournalRow)[] = [
+      "marketSentiment",
+      "mentalState",
+      "energyLevel",
+      "mistakes",
+      "observations",
+      "startingBalance",
+      "closingBalance",
+      "totalBrokerage",
+    ];
+    for (const key of updatableKeys) {
+      existing.set(key, String(data[key] ?? ""));
+    }
+    await existing.save();
+    return rowToObject(existing);
+  } else {
+    await sheet.addRow(data as any);
+    return data;
+  }
+}
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@contracts/*": ["./contracts/*"],
+      "@db/*": ["./db/*"]
+    }
+  },
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" },
+    { "path": "./tsconfig.server.json" }
+  ]
+}
+</file>
+
+<file path="api/lib/env.ts">
+import "dotenv/config";
+
+export const env = {
+  isProduction: process.env.NODE_ENV === "production",
+  jwtSecret: process.env.JWT_SECRET || "default_local_secret_key_123",
+  googleSheetId: process.env.GOOGLE_SHEET_ID || "",
+  googleServiceAccountJson: process.env.GOOGLE_SERVICE_ACCOUNT_JSON || "",
+};
+</file>
+
+<file path="api/lib/sheets-db.ts">
+import { GoogleSpreadsheet } from "google-spreadsheet";
+import { JWT } from "google-auth-library";
+import { env } from "./env";
+
+const SCOPES = [
+  "https://www.googleapis.com/auth/spreadsheets",
+  "https://www.googleapis.com/auth/drive.file",
+];
+
+let docPromise: Promise<GoogleSpreadsheet> | null = null;
+let serviceAccount: any = null;
+
+function getServiceAccount() {
+  if (serviceAccount) return serviceAccount;
+  
+  if (!env.googleServiceAccountJson) {
+     throw new Error("Missing GOOGLE_SERVICE_ACCOUNT_JSON in Vercel.");
+  }
+
+  let parsed = null;
+
+  try {
+    // Try Base64 first
+    const decoded = Buffer.from(env.googleServiceAccountJson, "base64").toString("utf-8");
+    if (decoded.trim().startsWith("{")) {
+        parsed = JSON.parse(decoded);
+    }
+  } catch (e) {
+    // Fall through to plain JSON
+  }
+
+  if (!parsed) {
+    try {
+      parsed = JSON.parse(env.googleServiceAccountJson);
+    } catch (e) {
+      throw new Error("Failed to parse JSON. Check your Vercel settings.");
+    }
+  }
+
+  // 🔥 THE CRITICAL FIX: Repair the mangled private key from Vercel
+  if (parsed && parsed.private_key) {
+      parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+  }
+
+  serviceAccount = parsed;
+  return serviceAccount;
+}
+
+async function getDoc(): Promise<GoogleSpreadsheet> {
+  const sa = getServiceAccount();
+  const jwt = new JWT({
+    email: sa.client_email,
+    key: sa.private_key,
+    scopes: SCOPES,
+  });
+  const doc = new GoogleSpreadsheet(env.googleSheetId, jwt);
+  await doc.loadInfo();
+  return doc;
+}
+
+export async function getSpreadsheet() {
+  if (!docPromise) {
+    docPromise = getDoc();
+  }
+  return docPromise;
+}
+
+export async function resetSpreadsheetCache() {
+  docPromise = null;
+}
+
+// Sheet names
+export const SHEET_USERS   = "Users";
+export const SHEET_TRADES  = "Trades";
+export const SHEET_FRIENDS = "Friends";
+export const SHEET_JOURNAL = "Journal";
+
+// Ensure headers exist on a sheet
+export async function ensureHeaders(
+  doc: GoogleSpreadsheet,
+  sheetTitle: string,
+  headers: string[]
+) {
+  let sheet = doc.sheetsByTitle[sheetTitle];
+  if (!sheet) {
+    sheet = await doc.addSheet({ title: sheetTitle, headerValues: headers });
+  } else {
+    await sheet.loadHeaderRow();
+    const existing = sheet.headerValues || [];
+    const missing = headers.filter((h) => !existing.includes(h));
+    if (missing.length > 0) {
+      await sheet.setHeaderRow([...existing, ...missing]);
+    }
+  }
+  return sheet;
+}
+</file>
+
+<file path="api/index.ts">
+import { handle } from 'hono/vercel';
+import app from './app';
+
+// 🔥 THIS IS THE MAGIC FIX 🔥
+// It forces Vercel to leave the data stream alone so tRPC can read it!
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
+export default handle(app);
 </file>
 
 </files>

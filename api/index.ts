@@ -1,5 +1,5 @@
 import { handle } from 'hono/vercel';
-import app from './app';
+import app from "./app.js";
 
 // Tell Vercel to leave the data stream alone
 export const config = {

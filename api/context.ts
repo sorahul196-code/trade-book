@@ -1,6 +1,6 @@
 import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 import { jwtVerify } from "jose";
-import { env } from "./lib/env";
+import { env } from "./lib/env.js";
 
 export type TrpcContext = {
   req: Request;

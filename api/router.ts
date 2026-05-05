@@ -1,7 +1,7 @@
-import { createRouter, publicQuery } from "./middleware";
-import { authRouter } from "./routers/auth";
-import { tradeRouter, journalRouter } from "./routers/trade";
-import { friendRouter } from "./routers/friend";
+import { createRouter, publicQuery } from "./middleware.js";
+import { authRouter } from "./routers/auth.js";
+import { tradeRouter, journalRouter } from "./routers/trade.js";
+import { friendRouter } from "./routers/friend.js";
 
 export const appRouter = createRouter({
   ping: publicQuery.query(() => ({ ok: true, ts: Date.now() })),

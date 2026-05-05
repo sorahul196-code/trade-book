@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createRouter, publicQuery, authedQuery } from "../middleware";
+import { createRouter, publicQuery, authedQuery } from "../middleware.js";
 import {
   findUserByShareToken,
   findTradesByUserId,
@@ -7,7 +7,7 @@ import {
   findFriendLinksByViewer,
   findUserById,
   deleteFriendLink,
-} from "../lib/sheets-queries";
+} from "../lib/sheets-queries.js";
 import crypto from "crypto";
 
 export const friendRouter = createRouter({

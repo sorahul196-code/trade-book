@@ -5,7 +5,7 @@ import {
   SHEET_TRADES,
   SHEET_FRIENDS,
   SHEET_JOURNAL,
-} from "./sheets-db";
+} from "./sheets-db.js";
 import type { GoogleSpreadsheetRow } from "google-spreadsheet";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
