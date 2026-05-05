@@ -2,27 +2,52 @@ import { GoogleSpreadsheet } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
 import { env } from "./env";
 
-// Decode service account JSON from base64
-let serviceAccount: any;
-try {
-  const json = Buffer.from(env.googleServiceAccountJson, "base64").toString("utf-8");
-  serviceAccount = JSON.parse(json);
-} catch {
-  // Try plain JSON if not base64
-  serviceAccount = JSON.parse(env.googleServiceAccountJson);
-}
-
 const SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets",
   "https://www.googleapis.com/auth/drive.file",
 ];
 
 let docPromise: Promise<GoogleSpreadsheet> | null = null;
+let serviceAccount: any = null;
+
+// This function safely checks your keys ONLY when you click a button
+function getServiceAccount() {
+  if (serviceAccount) return serviceAccount;
+  
+  if (!env.googleServiceAccountJson) {
+     throw new Error("CRITICAL: GOOGLE_SERVICE_ACCOUNT_JSON is totally missing in Vercel settings.");
+  }
+
+  try {
+    // 1. Try decoding as Base64 first
+    const json = Buffer.from(env.googleServiceAccountJson, "base64").toString("utf-8");
+    if (json.trim().startsWith("{")) {
+        serviceAccount = JSON.parse(json);
+        return serviceAccount;
+    }
+  } catch (e) {
+    // Ignore base64 error and fall through to plain JSON check
+  }
+
+  try {
+    // 2. Fallback to plain JSON string
+    serviceAccount = JSON.parse(env.googleServiceAccountJson);
+  } catch (e) {
+     throw new Error("CRITICAL: Vercel failed to parse your GOOGLE_SERVICE_ACCOUNT_JSON. Make sure it is valid JSON and you didn't accidentally include quotation marks around the whole thing in your Vercel settings.");
+  }
+
+  return serviceAccount;
+}
 
 async function getDoc(): Promise<GoogleSpreadsheet> {
+  const sa = getServiceAccount();
+  if (!sa.client_email || !sa.private_key) {
+      throw new Error("CRITICAL: Invalid Service Account. Your JSON is missing the 'client_email' or 'private_key' properties.");
+  }
+
   const jwt = new JWT({
-    email: serviceAccount.client_email,
-    key: serviceAccount.private_key,
+    email: sa.client_email,
+    key: sa.private_key,
     scopes: SCOPES,
   });
   const doc = new GoogleSpreadsheet(env.googleSheetId, jwt);
