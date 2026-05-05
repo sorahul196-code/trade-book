@@ -1,16 +1,8 @@
 import "dotenv/config";
 
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value && process.env.NODE_ENV === "production") {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value ?? "";
-}
-
 export const env = {
   isProduction: process.env.NODE_ENV === "production",
-  jwtSecret: required("JWT_SECRET"),
-  googleSheetId: required("GOOGLE_SHEET_ID"),
-  googleServiceAccountJson: required("GOOGLE_SERVICE_ACCOUNT_JSON"),
+  jwtSecret: process.env.JWT_SECRET || "default_local_secret_key_123",
+  googleSheetId: process.env.GOOGLE_SHEET_ID || "",
+  googleServiceAccountJson: process.env.GOOGLE_SERVICE_ACCOUNT_JSON || "",
 };
