@@ -9,8 +9,6 @@ function required(name: string): string {
 }
 
 export const env = {
-  appId: required("APP_ID"),
-  appSecret: required("APP_SECRET"),
   isProduction: process.env.NODE_ENV === "production",
   jwtSecret: required("JWT_SECRET"),
   googleSheetId: required("GOOGLE_SHEET_ID"),
