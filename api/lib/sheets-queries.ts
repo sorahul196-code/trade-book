@@ -68,7 +68,7 @@ export type JournalRow = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function rowToObject<T extends Record<string, string>>(row: GoogleSpreadsheetRow<T>): T {
+function rowToObject<T>(row: any): T {
   const obj: any = {};
   for (const key of Object.keys(row.toObject())) {
     obj[key] = row.get(key) ?? "";
@@ -141,7 +141,7 @@ export async function findTradesByUserId(userId: string): Promise<TradeRow[]> {
   const rows = await sheet.getRows<TradeRow>();
   return rows
     .filter((r) => r.get("userId") === userId)
-    .map((r) => rowToObject(r))
+    .map((r) => rowToObject<TradeRow>(r))
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
