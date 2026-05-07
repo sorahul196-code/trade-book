@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Plus, LogOut, Share2, Users, AlertTriangle, BookOpen, Brain, Zap,
-  TrendingUp, Copy, Check, ArrowRight, Loader2, Pencil, Trash2, ChevronDown, ChevronUp
+  TrendingUp, TrendingDown, Copy, Check, ArrowRight, Loader2, Pencil, Trash2, ChevronDown, ChevronUp, BarChart3, User
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,12 +28,160 @@ function formatDateTimeShort(d: string) {
   return `${datePart}, ${timePart}`;
 }
 
-// Converts a Date to YYYY-MM-DDThh:mm format for the HTML datetime-local input
 function getLocalDatetime(dateInput?: string | Date) {
   const d = dateInput ? new Date(dateInput) : new Date();
   if (isNaN(d.getTime())) return "";
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// ── The Premium Trade Card Component ──
+function UserTradeCard({ group, dayJournal, mistakesList, onSetClosingTrade }: any) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const isLong = group.side === "Long";
+  const capitalInvested = group.totalBuyQty * group.buyPrice;
+
+  return (
+    <Card className="bg-[hsl(0,0%,9%)] border-[hsl(0,0%,15%)] overflow-hidden shadow-2xl transition-all duration-300 ring-1 ring-white/5">
+      
+      {/* ── Header ── */}
+      <div 
+        className="p-4 flex justify-between items-center cursor-pointer hover:bg-[hsl(0,0%,11%)] active:scale-[0.99] transition-all select-none"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-center gap-3">
+          <div className={`w-1 h-8 rounded-full ${isLong ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]' : 'bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.4)]'}`}></div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-neutral-100 tracking-tight">{group.ticker}</h3>
+              <Badge className={`text-[9px] h-4 px-1.5 leading-none font-black uppercase ${isLong ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-rose-500/10 text-rose-500 border-rose-500/20'}`}>
+                {group.side}
+              </Badge>
+            </div>
+            <p className="text-[10px] text-neutral-500 font-medium mt-0.5">{formatDateTimeShort(group.buyDate)}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <p className={`text-sm font-bold ${group.totalPnL >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+              {group.isOpen ? "OPEN" : `${group.totalPnL >= 0 ? "+" : ""}${formatINR(group.totalPnL)}`}
+            </p>
+            {!group.isOpen && <p className="text-[9px] text-neutral-600 font-bold uppercase tracking-widest">Realized</p>}
+          </div>
+          <div className="bg-[hsl(0,0%,14%)] rounded-full p-1 border border-white/5">
+            {isExpanded ? <ChevronUp className="h-3 w-3 text-neutral-400" /> : <ChevronDown className="h-3 w-3 text-neutral-400" />}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Expanded Content ── */}
+      {isExpanded && (
+        <CardContent className="p-0 border-t border-white/5 bg-[hsl(0,0%,8%)] animate-in fade-in slide-in-from-top-2 duration-300">
+          
+          {/* Stats Grid */}
+          <div className="grid grid-cols-2 gap-px bg-white/5">
+             <div className="bg-[hsl(0,0%,8%)] p-4">
+                <p className="text-[9px] text-neutral-500 uppercase font-black tracking-widest mb-1">Entry Price</p>
+                <p className="text-sm font-semibold text-neutral-200">{formatINR(group.buyPrice)}</p>
+             </div>
+             <div className="bg-[hsl(0,0%,8%)] p-4 border-l border-white/5">
+                <p className="text-[9px] text-neutral-500 uppercase font-black tracking-widest mb-1">Position Size</p>
+                <p className="text-sm font-semibold text-neutral-200">{group.totalBuyQty} Shares</p>
+             </div>
+             <div className="bg-[hsl(0,0%,8%)] p-4 border-t border-white/5">
+                <p className="text-[9px] text-neutral-500 uppercase font-black tracking-widest mb-1">Capital Used</p>
+                <p className="text-sm font-semibold text-neutral-200">{formatINR(capitalInvested)}</p>
+             </div>
+             <div className="bg-[hsl(0,0%,8%)] p-4 border-t border-l border-white/5 flex flex-col justify-center">
+                {group.isOpen ? (
+                  <Button 
+                    size="sm" 
+                    className="h-8 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-wider"
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      onSetClosingTrade({ ticker: group.ticker, side: group.side, remainQty: group.currentRemainQty }); 
+                    }}
+                  >
+                    Close Trade
+                  </Button>
+                ) : (
+                  <div className="flex flex-col">
+                    <p className="text-[9px] text-neutral-500 uppercase font-black tracking-widest mb-1">Status</p>
+                    <p className="text-[10px] font-bold text-neutral-500">TRADING COMPLETE</p>
+                  </div>
+                )}
+             </div>
+          </div>
+
+          {/* Scale Outs / Timeline */}
+          {group.sells.length > 0 && (
+            <div className="p-5 border-t border-white/5 space-y-4">
+               <p className="text-[10px] text-neutral-500 uppercase font-black tracking-widest mb-4">Trade Timeline (Exits)</p>
+               {group.sells.map((sell: any, idx: number) => (
+                 <div key={idx} className="relative pl-6 border-l-2 border-white/10 pb-4 last:pb-0">
+                    <div className="absolute -left-[7px] top-0 h-3 w-3 rounded-full bg-[hsl(0,0%,15%)] border-2 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]"></div>
+                    <div className="flex justify-between items-start">
+                       <div>
+                          <p className="text-xs font-bold text-neutral-200">Sold {sell.soldQty} Shares @ {formatINR(sell.sellPrice)}</p>
+                          <p className="text-[10px] text-neutral-500 mt-0.5">{formatDateTimeShort(sell.sellDate)}</p>
+                       </div>
+                       <Badge className="bg-emerald-500/10 text-emerald-500 border-none text-[10px]">
+                         {sell.pnl >= 0 ? "+" : ""}{formatINR(sell.pnl)}
+                       </Badge>
+                    </div>
+                    {sell.note && (
+                      <div className="mt-2 p-2 rounded bg-[hsl(0,0%,12%)] border border-white/5 italic text-[10px] text-neutral-400 leading-relaxed">
+                        &ldquo;{sell.note}&rdquo;
+                      </div>
+                    )}
+                 </div>
+               ))}
+            </div>
+          )}
+
+          {/* Psychology Footer */}
+          {(dayJournal || mistakesList.length > 0) && (
+            <div className="p-5 bg-[hsl(0,0%,6%)] space-y-4">
+                <div className="flex flex-wrap gap-2">
+                   {dayJournal?.marketSentiment && (
+                       <div className="px-2 py-1 rounded bg-white/5 border border-white/10 text-[9px] font-bold text-neutral-300 uppercase">
+                          {dayJournal.marketSentiment}
+                       </div>
+                   )}
+                   <div className="flex gap-1">
+                      <div className="px-2 py-1 rounded bg-sky-500/10 border border-sky-500/20 text-[9px] font-bold text-sky-400">
+                        🧠 {dayJournal?.mentalState || '?'}/10
+                      </div>
+                      <div className="px-2 py-1 rounded bg-yellow-500/10 border border-yellow-500/20 text-[9px] font-bold text-yellow-400">
+                        ⚡ {dayJournal?.energyLevel || '?'}/10
+                      </div>
+                   </div>
+                </div>
+
+                {mistakesList.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {mistakesList.map((m: string) => (
+                      <span key={m} className="text-[8px] font-black uppercase text-rose-500/70 border border-rose-500/10 px-1.5 py-0.5 rounded">
+                        {m}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {dayJournal?.observations && (
+                   <div className="bg-[hsl(0,0%,10%)] rounded-lg p-3 border border-white/5">
+                      <p className="text-[10px] text-neutral-400 leading-relaxed italic">
+                        {dayJournal.observations}
+                      </p>
+                   </div>
+                )}
+            </div>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  );
 }
 
 export default function Dashboard() {
@@ -133,7 +281,7 @@ export default function Dashboard() {
   const journalEntries = journalData?.entries ?? [];
   const totalRealizedPnL = stats?.totalRealizedPnL ?? 0;
 
-  // Group partial sells into a single Trade Card based on original Buy Date & Ticker
+  // FIFO Grouping Logic
   const groupedMap = new Map<string, any>();
 
   matchedTrades.forEach((m) => {
@@ -156,7 +304,6 @@ export default function Dashboard() {
     const group = groupedMap.get(key);
 
     if (m.sellPrice !== null) {
-      // Find the specific sell note from the raw trades list
       const rawSell = stats?.trades.find(
         (t) => t.date === m.sellDate && t.ticker === m.ticker && (t.type === "Sell" || t.type === "Cover")
       );
@@ -179,12 +326,10 @@ export default function Dashboard() {
     }
   });
 
-  // Sort groups newest to oldest by buy date
   const sortedGroupedTrades = Array.from(groupedMap.values()).sort(
     (a, b) => new Date(b.buyDate).getTime() - new Date(a.buyDate).getTime()
   );
 
-  // Partition into Open vs Closed
   const openTrades = sortedGroupedTrades.filter((g) => g.isOpen);
   const closedTrades = sortedGroupedTrades.filter((g) => !g.isOpen);
 
@@ -214,7 +359,7 @@ export default function Dashboard() {
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
         
-        {/* ── Top Summary / Sharing ── */}
+        {/* ── Summary & Sharing ── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="bg-[hsl(0,0%,10%)] border-[hsl(0,0%,16%)] flex flex-col justify-center">
             <CardContent className="p-5">
@@ -272,7 +417,7 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* ── Friends List ── */}
+        {/* ── Friends ── */}
         {friendsData && friendsData.friends.length > 0 && (
           <Card className="bg-[hsl(0,0%,10%)] border-[hsl(0,0%,16%)]">
             <CardHeader className="pb-3">
@@ -298,33 +443,36 @@ export default function Dashboard() {
 
         {/* ── Tabs for Journal vs Raw Data ── */}
         <Tabs defaultValue="journal" className="w-full">
-          <div className="flex items-center justify-between mb-6">
-            <TabsList className="bg-[hsl(0,0%,10%)] border border-[hsl(0,0%,18%)] p-1">
-              <TabsTrigger value="journal" className="data-[state=active]:bg-[hsl(0,0%,16%)] data-[state=active]:text-white text-neutral-400">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6 px-1">
+            <TabsList className="bg-[hsl(0,0%,10%)] border border-[hsl(0,0%,18%)] p-1 w-full sm:w-auto h-auto sm:h-9 flex items-center justify-between">
+              <TabsTrigger value="journal" className="flex-1 sm:flex-none py-1.5 sm:py-0 data-[state=active]:bg-[hsl(0,0%,16%)] data-[state=active]:text-white text-neutral-400 text-xs sm:text-sm transition-all">
                 Journal View
               </TabsTrigger>
-              <TabsTrigger value="raw" className="data-[state=active]:bg-[hsl(0,0%,16%)] data-[state=active]:text-white text-neutral-400">
-                Manage Entries (Edit)
+              <TabsTrigger value="raw" className="flex-1 sm:flex-none py-1.5 sm:py-0 data-[state=active]:bg-[hsl(0,0%,16%)] data-[state=active]:text-white text-neutral-400 text-xs sm:text-sm transition-all ml-1">
+                Manage Entries
               </TabsTrigger>
             </TabsList>
             
-            <Link to="/trades/new">
-              <Button className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold">
+            <Link to="/trades/new" className="w-full sm:w-auto">
+              <Button className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold w-full sm:w-auto shadow-lg shadow-emerald-900/10">
                 <Plus className="h-4 w-4 mr-1.5" />
                 Add Entry
               </Button>
             </Link>
           </div>
 
-          {/* ── Tab 1: Journal View (Master Cards) ── */}
-          <TabsContent value="journal" className="space-y-8 outline-none">
+          {/* ── Tab 1: Journal View (Partitioned) ── */}
+          <TabsContent value="journal" className="space-y-10 outline-none">
             
+            {/* Section 1: Open Positions */}
             {openTrades.length > 0 && (
               <div className="space-y-4">
-                <h2 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-emerald-500" />
-                  Open Positions ({openTrades.length})
-                </h2>
+                <div className="flex items-center gap-4 py-2">
+                  <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-500 whitespace-nowrap">
+                    Open Positions
+                  </h2>
+                  <div className="h-px w-full bg-gradient-to-r from-emerald-500/20 to-transparent"></div>
+                </div>
                 {openTrades.map((group) => {
                   const dayJournal = journalEntries.find(j => toDateKey(j.date) === toDateKey(group.buyDate));
                   const mistakesList = dayJournal?.mistakes ? dayJournal.mistakes.split(",").filter(Boolean) : [];
@@ -341,74 +489,74 @@ export default function Dashboard() {
               </div>
             )}
 
-            {closedTrades.length > 0 && (
-              <div className="space-y-4">
-                <h2 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
-                  <BookOpen className="h-5 w-5 text-blue-400" />
-                  Closed Trades ({closedTrades.length})
+            {/* Section 2: Completed History */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 py-2">
+                <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-500 whitespace-nowrap">
+                  Completed History
                 </h2>
-                {closedTrades.map((group) => {
-                  const dayJournal = journalEntries.find(j => toDateKey(j.date) === toDateKey(group.buyDate));
-                  const mistakesList = dayJournal?.mistakes ? dayJournal.mistakes.split(",").filter(Boolean) : [];
-                  return (
-                    <UserTradeCard 
-                      key={group.id} 
-                      group={group} 
-                      dayJournal={dayJournal} 
-                      mistakesList={mistakesList} 
-                      onSetClosingTrade={setClosingTrade}
-                    />
-                  );
-                })}
+                <div className="h-px w-full bg-gradient-to-r from-neutral-500/20 to-transparent"></div>
               </div>
-            )}
+              {closedTrades.map((group) => {
+                const dayJournal = journalEntries.find(j => toDateKey(j.date) === toDateKey(group.buyDate));
+                const mistakesList = dayJournal?.mistakes ? dayJournal.mistakes.split(",").filter(Boolean) : [];
+                return (
+                  <UserTradeCard 
+                    key={group.id} 
+                    group={group} 
+                    dayJournal={dayJournal} 
+                    mistakesList={mistakesList} 
+                    onSetClosingTrade={setClosingTrade}
+                  />
+                );
+              })}
+            </div>
 
             {sortedGroupedTrades.length === 0 && !statsLoading && (
-              <div className="text-center py-20 bg-[hsl(0,0%,9%)] border border-[hsl(0,0%,16%)] rounded-xl shadow-xl">
-                <BookOpen className="h-12 w-12 text-neutral-700 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-neutral-300">Your journal is empty</h3>
-                <p className="text-neutral-500 mt-1 mb-6">Log your first trade to start tracking your journey.</p>
+              <div className="text-center py-20 bg-[hsl(0,0%,9%)] border border-white/5 rounded-xl shadow-xl">
+                <BookOpen className="h-12 w-12 text-neutral-800 mx-auto mb-4" />
+                <h3 className="text-lg font-black tracking-tight text-neutral-500 uppercase">Your journal is empty</h3>
+                <p className="text-neutral-600 text-xs mt-1">Log your first trade to start tracking your journey.</p>
               </div>
             )}
           </TabsContent>
 
-          {/* ── Tab 2: Raw Data (Edit & Delete) ── */}
+          {/* ── Tab 2: Raw Data (Manage Entries) ── */}
           <TabsContent value="raw" className="outline-none">
-            <Card className="bg-[hsl(0,0%,9%)] border-[hsl(0,0%,16%)] overflow-hidden">
-              <CardContent className="p-0 overflow-x-auto">
+            <Card className="bg-[hsl(0,0%,9%)] border-[hsl(0,0%,16%)] overflow-hidden shadow-xl">
+              <CardContent className="p-0 overflow-x-auto no-scrollbar">
                 <table className="w-full text-sm">
                   <thead className="bg-[hsl(0,0%,11%)]">
-                    <tr className="text-neutral-500 border-b border-[hsl(0,0%,16%)] text-xs uppercase tracking-wider">
-                      <th className="text-left font-semibold py-3 px-4">Date</th>
-                      <th className="text-left font-semibold py-3 px-4">Type</th>
-                      <th className="text-left font-semibold py-3 px-4">Ticker</th>
-                      <th className="text-right font-semibold py-3 px-4">Qty</th>
-                      <th className="text-right font-semibold py-3 px-4">Price</th>
-                      <th className="text-right font-semibold py-3 px-4 w-24">Actions</th>
+                    <tr className="text-neutral-500 border-b border-[hsl(0,0%,16%)] text-[10px] uppercase font-black tracking-widest">
+                      <th className="text-left py-4 px-5">Date</th>
+                      <th className="text-left py-4 px-5">Type</th>
+                      <th className="text-left py-4 px-5">Ticker</th>
+                      <th className="text-right py-4 px-5">Qty</th>
+                      <th className="text-right py-4 px-5">Price</th>
+                      <th className="text-right py-4 px-5 w-24">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[hsl(0,0%,14%)]">
                     {[...rawTrades].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((trade) => (
                       <tr key={trade.id} className="hover:bg-[hsl(0,0%,12%)] transition-colors">
-                        <td className="py-3 px-4 text-neutral-300 whitespace-nowrap">
+                        <td className="py-4 px-5 text-neutral-300 whitespace-nowrap text-xs">
                           {formatDateTimeShort(trade.date)}
                         </td>
-                        <td className="py-3 px-4">
-                          <Badge variant="outline" className={`text-[10px] uppercase ${trade.type === "Buy" || trade.type === "Cover" ? "border-emerald-500/30 text-emerald-400" : "border-red-500/30 text-red-400"}`}>
+                        <td className="py-4 px-5">
+                          <Badge variant="outline" className={`text-[9px] uppercase font-black px-1.5 h-4 border-none ${trade.type === "Buy" || trade.type === "Cover" ? "bg-emerald-500/10 text-emerald-500" : "bg-rose-500/10 text-rose-500"}`}>
                             {trade.type}
                           </Badge>
                         </td>
-                        <td className="py-3 px-4 font-bold text-white">{trade.ticker}</td>
-                        <td className="py-3 px-4 text-right text-neutral-300">{trade.quantity}</td>
-                        <td className="py-3 px-4 text-right text-neutral-300">{formatINR(Number(trade.price))}</td>
-                        <td className="py-3 px-4">
+                        <td className="py-4 px-5 font-bold text-white text-xs">{trade.ticker}</td>
+                        <td className="py-4 px-5 text-right text-neutral-300 text-xs">{trade.quantity}</td>
+                        <td className="py-4 px-5 text-right text-neutral-300 text-xs">{formatINR(Number(trade.price))}</td>
+                        <td className="py-4 px-5">
                           <div className="flex items-center justify-end gap-1">
                             <Button 
                               variant="ghost" 
                               size="sm" 
                               className="h-8 w-8 p-0 text-neutral-400 hover:text-white hover:bg-[hsl(0,0%,16%)]" 
                               onClick={() => setEditTrade({ ...trade })}
-                              title="Edit Entry"
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
@@ -417,11 +565,10 @@ export default function Dashboard() {
                               size="sm" 
                               className="h-8 w-8 p-0 text-neutral-400 hover:text-red-400 hover:bg-red-500/10" 
                               onClick={() => { 
-                                if (confirm("Are you sure you want to delete this raw entry? This will recalculate your open positions.")) {
+                                if (confirm("Delete this entry? matched cards will recalculate.")) {
                                   deleteMutation.mutate({ id: trade.id }); 
                                 }
                               }}
-                              title="Delete Entry"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
@@ -429,9 +576,6 @@ export default function Dashboard() {
                         </td>
                       </tr>
                     ))}
-                    {rawTrades.length === 0 && (
-                      <tr><td colSpan={6} className="py-8 text-center text-neutral-500">No entries found.</td></tr>
-                    )}
                   </tbody>
                 </table>
               </CardContent>
@@ -442,16 +586,14 @@ export default function Dashboard() {
       </main>
 
       {/* ── Modals ── */}
-      
-      {/* 1-Click Close Modal */}
       {closingTrade && (
         <Dialog open={!!closingTrade} onOpenChange={(open) => !open && setClosingTrade(null)}>
-          <DialogContent className="bg-[hsl(0,0%,12%)] border-[hsl(0,0%,20%)] text-white max-w-sm">
+          <DialogContent className="bg-[hsl(0,0%,12%)] border-[hsl(0,0%,20%)] text-white max-w-sm ring-1 ring-white/10">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                  Close Position: <span className="text-emerald-400">{closingTrade.ticker}</span>
               </DialogTitle>
-              <DialogDescription className="text-neutral-400">
+              <DialogDescription className="text-neutral-400 text-xs">
                 You are closing your {closingTrade.side} position.
               </DialogDescription>
             </DialogHeader>
@@ -465,14 +607,13 @@ export default function Dashboard() {
         </Dialog>
       )}
 
-      {/* Edit Raw Trade Modal */}
       {editTrade && (
         <Dialog open={!!editTrade} onOpenChange={(open) => !open && setEditTrade(null)}>
-          <DialogContent className="bg-[hsl(0,0%,12%)] border-[hsl(0,0%,20%)] text-white max-w-sm">
+          <DialogContent className="bg-[hsl(0,0%,12%)] border-[hsl(0,0%,20%)] text-white max-w-sm ring-1 ring-white/10">
             <DialogHeader>
-              <DialogTitle>Edit Entry</DialogTitle>
-              <DialogDescription className="text-neutral-400">
-                Warning: Editing quantities or prices will automatically alter your matched FIFO cards.
+              <DialogTitle className="text-base font-bold">Edit Entry</DialogTitle>
+              <DialogDescription className="text-neutral-400 text-xs">
+                Warning: Editing quantities will alter FIFO matched cards.
               </DialogDescription>
             </DialogHeader>
             <EditTradeForm 
@@ -490,184 +631,6 @@ export default function Dashboard() {
 }
 
 // ── Components ──
-
-function UserTradeCard({ group, dayJournal, mistakesList, onSetClosingTrade }: any) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const isLong = group.side === "Long";
-  const capitalInvested = group.totalBuyQty * group.buyPrice;
-
-  return (
-    <Card className="bg-[hsl(0,0%,9%)] border-[hsl(0,0%,16%)] overflow-hidden shadow-xl transition-all duration-200">
-       
-       {/* Clickable Header */}
-       <div 
-         className="bg-[hsl(0,0%,11%)] border-b border-[hsl(0,0%,16%)] p-4 flex justify-between items-center cursor-pointer hover:bg-[hsl(0,0%,13%)] transition-colors select-none"
-         onClick={() => setIsExpanded(!isExpanded)}
-       >
-          <div className="flex items-center gap-3">
-             <div className={`w-1.5 h-6 rounded-full ${isLong ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-             <h3 className="text-lg font-bold text-white">{group.ticker}</h3>
-             <Badge variant="outline" className={`text-[10px] uppercase ${isLong ? 'text-emerald-400 border-emerald-500/30' : 'text-red-400 border-red-500/30'}`}>
-               {group.side}
-             </Badge>
-             <span className="text-sm text-neutral-400 ml-2 hidden sm:inline-block">
-                {formatDateTimeShort(group.buyDate)}
-             </span>
-          </div>
-          <div className="flex items-center gap-4">
-             {/* Quick Summary in Header */}
-             {!group.isOpen && (
-               <span className={`text-sm font-medium hidden sm:inline-block ${group.totalPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                 {group.totalPnL >= 0 ? "+" : ""}{formatINR(group.totalPnL)}
-               </span>
-             )}
-             {group.isOpen ? (
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="h-8 bg-[hsl(0,0%,12%)] border-[hsl(0,0%,24%)] hover:bg-emerald-600 hover:text-white hover:border-emerald-500 transition-colors text-neutral-300"
-                  onClick={(e) => { 
-                    e.stopPropagation(); 
-                    onSetClosingTrade({ ticker: group.ticker, side: group.side, remainQty: group.currentRemainQty }); 
-                  }}
-                >
-                  Close Position
-                </Button>
-             ) : (
-                <Badge className="bg-neutral-800 text-neutral-400 font-medium">Closed</Badge>
-             )}
-             <div className="bg-[hsl(0,0%,16%)] rounded p-1">
-               {isExpanded ? <ChevronUp className="h-4 w-4 text-neutral-300" /> : <ChevronDown className="h-4 w-4 text-neutral-300" />}
-             </div>
-          </div>
-       </div>
-
-       {/* Expanded Body */}
-       {isExpanded && (
-         <CardContent className="p-0 animate-in slide-in-from-top-2 duration-200">
-            {/* Buy Details Row */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 p-4 sm:p-5 border-b border-[hsl(0,0%,16%)]">
-                <div>
-                   <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-1">Buy Date</p>
-                   <p className="text-sm text-neutral-200">{formatDateTimeShort(group.buyDate)}</p>
-                </div>
-                <div>
-                   <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-1">Buy Price</p>
-                   <p className="text-sm text-neutral-200">{formatINR(group.buyPrice)}</p>
-                </div>
-                <div>
-                   <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-1">Quantity</p>
-                   <p className="text-sm text-neutral-200">{group.totalBuyQty}</p>
-                </div>
-                <div>
-                   <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-1">Capital Invested</p>
-                   <p className="text-sm text-neutral-200">{formatINR(capitalInvested)}</p>
-                </div>
-                <div>
-                   <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-1">Realized P&L</p>
-                   <p className={`text-sm font-medium ${group.totalPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                     {group.totalPnL >= 0 ? "+" : ""}{formatINR(group.totalPnL)}
-                   </p>
-                </div>
-            </div>
-
-            {/* Sell Details Rows */}
-            {group.sells.map((sell: any, index: number) => (
-                <div key={index} className="flex flex-col border-b border-[hsl(0,0%,16%)] bg-[hsl(0,0%,10.5%)]">
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 p-4 sm:p-5">
-                        <div>
-                          <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-1">Sell Date</p>
-                          <p className="text-sm text-neutral-300">{formatDateTimeShort(sell.sellDate)}</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-1">Sell Price</p>
-                          <p className="text-sm text-neutral-300">{formatINR(sell.sellPrice)}</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-1">Sold Qty</p>
-                          <p className="text-sm text-neutral-300">{sell.soldQty}</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-1">Remain Qty</p>
-                          <p className="text-sm text-orange-400">{sell.remainQty}</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-1">P&L</p>
-                          <p className={`text-sm font-medium ${sell.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                            {sell.pnl >= 0 ? "+" : ""}{formatINR(sell.pnl)}
-                          </p>
-                        </div>
-                    </div>
-                    {sell.note && (
-                        <div className="px-4 pb-4 sm:px-5 sm:pb-5 text-sm text-neutral-300 bg-[hsl(0,0%,10.5%)]">
-                            <span className="text-amber-400 font-semibold mr-2 uppercase text-[10px]">Sell Note:</span>
-                            {sell.note}
-                        </div>
-                    )}
-                </div>
-            ))}
-
-            {/* Psychology / Journal Section */}
-            {(dayJournal || mistakesList.length > 0) && (
-                <div className="p-4 sm:p-5 bg-[hsl(0,0%,8%)] space-y-4">
-                    {dayJournal && (
-                        <div className="flex flex-wrap gap-3">
-                           {dayJournal.marketSentiment && (
-                               <Badge variant="outline" className="bg-[hsl(0,0%,12%)] border-[hsl(0,0%,20%)] text-neutral-300 py-1">
-                                   Sentiment: <span className="ml-1 font-semibold text-white">{dayJournal.marketSentiment}</span>
-                               </Badge>
-                           )}
-                           {dayJournal.mentalState && (
-                               <Badge variant="outline" className="bg-[hsl(0,0%,12%)] border-[hsl(0,0%,20%)] text-neutral-300 py-1">
-                                   <Brain className="h-3 w-3 mr-1.5 text-sky-400"/> Mental: <span className="ml-1 font-semibold text-white">{dayJournal.mentalState}/10</span>
-                               </Badge>
-                           )}
-                           {dayJournal.energyLevel && (
-                               <Badge variant="outline" className="bg-[hsl(0,0%,12%)] border-[hsl(0,0%,20%)] text-neutral-300 py-1">
-                                   <Zap className="h-3 w-3 mr-1.5 text-yellow-400"/> Energy: <span className="ml-1 font-semibold text-white">{dayJournal.energyLevel}/10</span>
-                               </Badge>
-                           )}
-                        </div>
-                    )}
-
-                    {mistakesList.length > 0 && (
-                        <div>
-                            <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-2 flex items-center gap-1">
-                              <AlertTriangle className="h-3 w-3 text-red-400" />
-                              Mistakes & Violations
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {mistakesList.map((m: string) => (
-                                <Badge key={m} variant="outline" className="text-xs text-red-400 border-red-500/30 bg-red-500/10 py-1">
-                                  {m}
-                                </Badge>
-                              ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {dayJournal?.observations && (
-                        <div>
-                            <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-2 flex items-center gap-1">
-                              <BookOpen className="h-3 w-3 text-amber-400" />
-                              Observations / Notes
-                            </p>
-                            <div className="bg-[hsl(0,0%,11%)] border border-[hsl(0,0%,18%)] rounded-lg p-3">
-                              <p className="text-sm text-neutral-300 whitespace-pre-wrap leading-relaxed">
-                                {dayJournal.observations}
-                              </p>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
-         </CardContent>
-       )}
-    </Card>
-  );
-}
-
-// ── Form Components ──
 
 function CloseTradeForm({ trade, onSave, onCancel, isPending }: any) {
   const [qty, setQty] = useState(String(trade.remainQty));
@@ -689,57 +652,26 @@ function CloseTradeForm({ trade, onSave, onCancel, isPending }: any) {
     }} className="space-y-4 pt-2">
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
-          <Label className="text-neutral-400 text-xs">Quantity</Label>
-          <Input 
-            type="number" 
-            min="1" 
-            max={trade.remainQty} 
-            value={qty} 
-            onChange={(e) => setQty(e.target.value)} 
-            required 
-            className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white" 
-          />
+          <Label className="text-neutral-400 text-[10px] uppercase font-bold tracking-widest">Quantity</Label>
+          <Input type="number" min="1" max={trade.remainQty} value={qty} onChange={(e) => setQty(e.target.value)} required className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white" />
         </div>
         <div className="space-y-2">
-          <Label className="text-neutral-400 text-xs">Closing Price (₹)</Label>
-          <Input 
-            type="number" 
-            step="0.01" 
-            value={price} 
-            onChange={(e) => setPrice(e.target.value)} 
-            required 
-            className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white" 
-          />
+          <Label className="text-neutral-400 text-[10px] uppercase font-bold tracking-widest">Exit Price</Label>
+          <Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white" />
         </div>
       </div>
-      
       <div className="space-y-2">
-        <Label className="text-neutral-400 text-xs">Closing Date & Time</Label>
-        <Input 
-          type="datetime-local" 
-          value={date} 
-          onChange={(e) => setDate(e.target.value)} 
-          required 
-          className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white [&::-webkit-calendar-picker-indicator]:invert" 
-        />
+        <Label className="text-neutral-400 text-[10px] uppercase font-bold tracking-widest">Date & Time</Label>
+        <Input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} required className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white [&::-webkit-calendar-picker-indicator]:invert" />
       </div>
-
       <div className="space-y-2">
-        <Label className="text-neutral-400 text-xs">Closing Notes (Optional)</Label>
-        <Input 
-          value={notes} 
-          onChange={(e) => setNotes(e.target.value)} 
-          placeholder="Reason for closing this position..."
-          className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white placeholder:text-neutral-600 text-sm" 
-        />
+        <Label className="text-neutral-400 text-[10px] uppercase font-bold tracking-widest">Reason / Notes</Label>
+        <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="..." className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white placeholder:text-neutral-600 text-sm" />
       </div>
-
       <div className="flex gap-2 pt-2">
-        <Button type="button" variant="outline" onClick={onCancel} className="flex-1 border-[hsl(0,0%,24%)] bg-transparent text-neutral-300 hover:bg-[hsl(0,0%,18%)] text-white">
-          Cancel
-        </Button>
+        <Button type="button" variant="outline" onClick={onCancel} className="flex-1 border-[hsl(0,0%,24%)] bg-transparent text-neutral-300">Cancel</Button>
         <Button type="submit" disabled={isPending} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white">
-          {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Confirm Close
+          {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Confirm
         </Button>
       </div>
     </form>
@@ -748,83 +680,37 @@ function CloseTradeForm({ trade, onSave, onCancel, isPending }: any) {
 
 function EditTradeForm({ trade, onSave, onCancel, isPending }: any) {
   const [form, setForm] = useState({ ...trade, date: getLocalDatetime(trade.date) });
-  
   return (
-    <form onSubmit={(e) => { 
-      e.preventDefault(); 
-      onSave({ ...form, date: new Date(form.date).toISOString() }); 
-    }} className="space-y-4 pt-2">
+    <form onSubmit={(e) => { e.preventDefault(); onSave({ ...form, date: new Date(form.date).toISOString() }); }} className="space-y-4 pt-2">
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
-          <Label className="text-xs text-neutral-400">Type</Label>
-          <select 
-            value={form.type} 
-            onChange={(e) => setForm({ ...form, type: e.target.value })} 
-            className="w-full h-9 rounded-md bg-[hsl(0,0%,16%)] border border-[hsl(0,0%,24%)] text-white text-sm px-3 outline-none focus:ring-1 focus:ring-emerald-500"
-          >
+          <Label className="text-[10px] text-neutral-400 uppercase font-bold tracking-widest">Type</Label>
+          <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="w-full h-9 rounded-md bg-[hsl(0,0%,16%)] border border-[hsl(0,0%,24%)] text-white text-sm px-3 outline-none">
             {["Buy", "Sell", "Short", "Cover"].map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
         <div className="space-y-2">
-          <Label className="text-xs text-neutral-400">Ticker</Label>
-          <Input 
-            value={form.ticker} 
-            onChange={(e) => setForm({ ...form, ticker: e.target.value.toUpperCase() })} 
-            className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white uppercase" 
-          />
+          <Label className="text-[10px] text-neutral-400 uppercase font-bold tracking-widest">Ticker</Label>
+          <Input value={form.ticker} onChange={(e) => setForm({ ...form, ticker: e.target.value.toUpperCase() })} className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white" />
         </div>
       </div>
-      
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
-          <Label className="text-xs text-neutral-400">Quantity</Label>
-          <Input 
-            type="number" 
-            value={form.quantity} 
-            onChange={(e) => setForm({ ...form, quantity: e.target.value })} 
-            className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white" 
-          />
+          <Label className="text-[10px] text-neutral-400 uppercase font-bold tracking-widest">Quantity</Label>
+          <Input type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white" />
         </div>
         <div className="space-y-2">
-          <Label className="text-xs text-neutral-400">Price (₹)</Label>
-          <Input 
-            type="number" 
-            step="0.01" 
-            value={form.price} 
-            onChange={(e) => setForm({ ...form, price: e.target.value })} 
-            className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white" 
-          />
+          <Label className="text-[10px] text-neutral-400 uppercase font-bold tracking-widest">Price</Label>
+          <Input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white" />
         </div>
       </div>
-
       <div className="space-y-2">
-        <Label className="text-neutral-400 text-xs">Date & Time</Label>
-        <Input 
-          type="datetime-local" 
-          value={form.date} 
-          onChange={(e) => setForm({ ...form, date: e.target.value })} 
-          required 
-          className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white [&::-webkit-calendar-picker-indicator]:invert" 
-        />
+        <Label className="text-[10px] text-neutral-400 uppercase font-bold tracking-widest">Date & Time</Label>
+        <Input type="datetime-local" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white [&::-webkit-calendar-picker-indicator]:invert" />
       </div>
-
-      <div className="space-y-2">
-        <Label className="text-neutral-400 text-xs">Notes</Label>
-        <Input 
-          value={form.notes} 
-          onChange={(e) => setForm({ ...form, notes: e.target.value })} 
-          placeholder="Edit note..."
-          className="bg-[hsl(0,0%,16%)] border-[hsl(0,0%,24%)] text-white placeholder:text-neutral-600 text-sm" 
-        />
-      </div>
-      
       <div className="flex gap-2 pt-2">
-        <Button type="button" variant="outline" onClick={onCancel} className="flex-1 border-[hsl(0,0%,24%)] bg-transparent text-neutral-300 hover:bg-[hsl(0,0%,18%)] text-white">
-          Cancel
-        </Button>
-        <Button type="submit" disabled={isPending} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white">
-          {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
-        </Button>
+        <Button type="button" variant="outline" onClick={onCancel} className="flex-1 border-[hsl(0,0%,24%)] bg-transparent text-neutral-300">Cancel</Button>
+        <Button type="submit" disabled={isPending} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white">Save</Button>
       </div>
     </form>
   );
