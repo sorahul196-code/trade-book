@@ -7,6 +7,7 @@ import {
   findFriendLinksByViewer,
   findUserById,
   deleteFriendLink,
+  findJournalByUserId,
 } from "../lib/sheets-queries.js";
 import crypto from "crypto";
 
@@ -20,6 +21,7 @@ export const friendRouter = createRouter({
         return { success: false, error: "Invalid share link" } as const;
       }
       const trades = await findTradesByUserId(user.id);
+      const journalEntries = await findJournalByUserId(user.id);
       return {
         success: true,
         friend: {
@@ -28,6 +30,7 @@ export const friendRouter = createRouter({
           shareToken: user.shareToken,
         },
         trades,
+        journalEntries,
       } as const;
     }),
 
