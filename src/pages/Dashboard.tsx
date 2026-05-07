@@ -13,8 +13,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle
 } from "@/components/ui/dialog";
 import {
-  Plus, LogOut, Share2, Users, AlertTriangle, BookOpen, Brain, Zap,
-  TrendingUp, TrendingDown, Copy, Check, ArrowRight, Loader2, Pencil, Trash2, ChevronDown, ChevronUp, BarChart3, User
+  Plus, LogOut, Share2, Users, BookOpen, TrendingUp, Copy, Check, ArrowRight, Loader2, Pencil, Trash2, ChevronDown, ChevronUp
 } from "lucide-react";
 import { toast } from "sonner";
 

@@ -53,9 +53,9 @@ export default function TradeForm() {
   const [energyLevel,  setEnergyLevel]  = useState(7);
   const [mistakes,     setMistakes]     = useState<Mistake[]>([]);
   const [observations, setObservations] = useState("");
-  const [startBal,     setStartBal]     = useState("");
-  const [closeBal,     setCloseBal]     = useState("");
-  const [brokerage,    setBrokerage]    = useState("");
+  const [startBal]     = useState("");
+  const [closeBal]     = useState("");
+  const [brokerage]    = useState("");
 
   const dateKey = date.slice(0, 10); // YYYY-MM-DD
 
@@ -222,56 +222,6 @@ export default function TradeForm() {
                   </p>
                 </div>
               )}
-            </CardContent>
-          </Card>
-
-          {/* ── Section 2: Day Financials ──────────────────────────────── */}
-          <Card className="bg-[hsl(0,0%,10%)] border-[hsl(0,0%,16%)]">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-white text-base flex items-center gap-2">
-                <BookOpen className="h-4 w-4 text-violet-400" />
-                Day Financials
-              </CardTitle>
-              <CardDescription className="text-neutral-400 text-xs">
-                Optional — track your account balance and brokerage for {dateKey}.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-neutral-300 text-xs">Starting Balance (₹)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={startBal}
-                    onChange={(e) => setStartBal(e.target.value)}
-                    placeholder="100000"
-                    className="bg-[hsl(0,0%,14%)] border-[hsl(0,0%,22%)] text-white placeholder:text-neutral-600"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-neutral-300 text-xs">Closing Balance (₹)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={closeBal}
-                    onChange={(e) => setCloseBal(e.target.value)}
-                    placeholder="101200"
-                    className="bg-[hsl(0,0%,14%)] border-[hsl(0,0%,22%)] text-white placeholder:text-neutral-600"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-neutral-300 text-xs">Total Brokerage (₹)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={brokerage}
-                    onChange={(e) => setBrokerage(e.target.value)}
-                    placeholder="45.00"
-                    className="bg-[hsl(0,0%,14%)] border-[hsl(0,0%,22%)] text-white placeholder:text-neutral-600"
-                  />
-                </div>
-              </div>
             </CardContent>
           </Card>
 
